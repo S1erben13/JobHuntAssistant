@@ -1,0 +1,6 @@
+/.env
+/venv/
+/.idea/
+/ollama/
+/letters/
+/apply_for_hh requirements.rtf

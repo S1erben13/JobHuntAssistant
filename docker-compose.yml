@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  ollama:
+    container_name: ollama
+#    command: pull ${LLM_MODEL} & serve
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: -1
+    networks:
+      - my_network
+
+  web:
+    build: .
+    command: bash -c "python run.py"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    networks:
+      - my_network
+    env_file:
+      - .env
+
+networks:
+  my_network:
+    driver: bridge
