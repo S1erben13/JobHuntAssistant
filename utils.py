@@ -1,88 +1,143 @@
 import logging
 import os
 from datetime import date
+
 import requests
 from dotenv import load_dotenv
 
+# from striprtf.striprtf import rtf_to_text
+
+# Load environment variables
 load_dotenv()
 LLM_MODEL = os.getenv("LLM_MODEL")
 SKILLS = os.getenv("SKILLS")
 PERSONAL_DATA = os.getenv("PERSONAL_DATA")
 
-url = "http://ollama:11434/api/generate"
+# API configuration
+OLLAMA_API_URL = "http://ollama:11434/api/generate"
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
-def send_request(prompt, conversation_history=None):
+def send_request(prompt: str, conversation_history: list = None) -> str:
     """
-    Отправляет запрос к YandexGPT-5-Lite-8B-instruct через Ollama API
+    Send a request to the LLM model via Ollama API.
 
-    :param prompt: Текущий запрос пользователя
-    :param conversation_history: История диалога в формате [{"role": "user", "content": "..."}, ...]
-    :return: Ответ модели
+    Args:
+        prompt: The current user prompt/message.
+        conversation_history: List of previous messages in the conversation
+            (format: [{"role": "user|assistant", "content": "..."}, ...])
+
+    Returns:
+        The cleaned response from the model.
+
+    Raises:
+        RuntimeError: If the server returns a 500 error.
+        ValueError: If the response format is invalid.
+        ConnectionError: If the request fails.
     """
-    if conversation_history is None:
-        conversation_history = []
+    conversation_history = conversation_history or []
 
-    # Формируем полный контекст согласно шаблону модели
+    # Format the prompt with conversation history
     messages = conversation_history + [{"role": "user", "content": prompt}]
-    formatted_prompt = "".join(
-        f"Пользователь: {msg['content']}\n\n" if msg["role"] == "user"
-        else f"Ассистент: {msg['content']}\n\n"
-        for msg in messages
-    ) + "Ассистент:[SEP]"  # Критически важный маркер генерации
+    formatted_prompt = (
+        "".join(
+            (
+                f"Пользователь: {msg['content']}\n\n"
+                if msg["role"] == "user"
+                else f"Ассистент: {msg['content']}\n\n"
+            )
+            for msg in messages
+        )
+        + "Ассистент:[SEP]"
+    )  # Critical generation marker
 
-    data = {
-        "model": LLM_MODEL,  # "yandexgpt-5-lite-8b-instruct"
+    payload = {
+        "model": LLM_MODEL,
         "prompt": formatted_prompt,
         "stream": False,
         "options": {
-            "num_predict": 350,  # Оптимально для 2 абзацев
-            "temperature": 0.6,  # Баланс креативности/строгости
-            "top_p": 0.85,  # Лучшая селективность
-            "stop": ["\n\n\n", "Добрый день, я", "Уважаемые"]  # Четкие границы
-        }
+            "num_predict": 350,  # Optimal for 2 paragraphs
+            "temperature": 0.6,  # Creativity/strictness balance
+            "top_p": 0.85,  # Better selectivity
+            "stop": ["\n\n\n", "Добрый день, я", "Уважаемые"],  # Clear boundaries
+        },
     }
 
     try:
-        r = requests.post(url, json=data, timeout=300)
-        # logging.info(f'Request to {url} - Status: {r.status_code}')
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=300)
 
-        if r.status_code == 500:
-            error_detail = r.text if r.text else 'No error details provided by server'
-            logging.error(f'Server Error (500) - Details: {error_detail}')
-            raise RuntimeError(f"LLM service unavailable (500). Details: {error_detail}")
+        if response.status_code == 500:
+            error_detail = response.text or "No error details provided by server"
+            logger.error(f"Server Error (500) - Details: {error_detail}")
+            raise RuntimeError(
+                f"LLM service unavailable (500). Details: {error_detail}"
+            )
 
-        r.raise_for_status()
+        response.raise_for_status()
 
         try:
-            response = r.json()['response']
-            # Улучшенная очистка ответа
-            cleaned_response = (
-                response.replace("</s>", "")
-                .strip()  # Удаляем пробелы в начале/конце
-                .replace("\n ", "\n")  # Удаляем пробелы после переносов
-                .replace("  ", " ")  # Удаляем двойные пробелы
-            )
-            # Дополнительная очистка форматирования
-            for char in ['#', '*', '`']:
-                cleaned_response = cleaned_response.replace(char, '')
-            return cleaned_response
+            model_response = response.json()["response"]
+            return clean_response(model_response)
         except KeyError as e:
-            logging.error(f'Missing "response" key in JSON: {str(e)} - Full response: {r.text}')
-            raise ValueError("Invalid response format from LLM: missing 'response' field") from e
+            logger.error(
+                f'Missing "response" key in JSON: {str(e)} - Full response: {response.text}'
+            )
+            raise ValueError(
+                "Invalid response format from LLM: missing 'response' field"
+            ) from e
         except ValueError as e:
-            logging.error(f'Invalid JSON response: {str(e)} - Response text: {r.text}')
+            logger.error(
+                f"Invalid JSON response: {str(e)} - Response text: {response.text}"
+            )
             raise ValueError("Invalid JSON response from LLM") from e
 
     except requests.exceptions.RequestException as e:
-        logging.error(f'Request failed: {str(e)} - URL: {url} - Payload: {data}')
+        logger.error(
+            f"Request failed: {str(e)} - URL: {OLLAMA_API_URL} - Payload: {payload}"
+        )
         raise ConnectionError(f"Failed to connect to LLM service: {str(e)}") from e
 
 
-def send_for_enhance(text, edit_wishes):
+def clean_response(response: str) -> str:
+    """
+    Clean and format the model response.
+
+    Args:
+        response: The raw response from the model.
+
+    Returns:
+        The cleaned and formatted response.
+    """
+    cleaned = (
+        response.replace("</s>", "")
+        .strip()
+        .replace("\n ", "\n")  # Remove spaces after newlines
+        .replace("  ", " ")  # Remove double spaces
+    )
+
+    # Remove special formatting characters
+    for char in ["#", "*", "`"]:
+        cleaned = cleaned.replace(char, "")
+
+    return cleaned
+
+
+def send_for_enhance(text: str, edit_wishes: str) -> str:
+    """
+    Send text to the model for enhancement based on specific wishes.
+
+    Args:
+        text: The text to be enhanced.
+        edit_wishes: Instructions for how to enhance the text.
+
+    Returns:
+        The enhanced text.
+    """
     prompt = f"""
     СОПРОВОДИТЕЛЬНОЕ ПИСЬМО НУЖНО ИЗМЕНИТЬ С УЧЁТОМ ПОЖЕЛАНИЙ.
     ПОЖЕЛАНИЯ:
@@ -90,27 +145,54 @@ def send_for_enhance(text, edit_wishes):
     В ТВОЁМ ОТВЕТЕ ДОЛЖНО БЫТЬ ТОЛЬКО ИЗМЕНЕННОЕ ПИСЬМО И НИЧЕГО БОЛЬШЕ
     ПИСЬМО:
     {text}"""
-    response = send_request(prompt)
-    return response
+    return send_request(prompt)
 
 
-def fix_punctuation(text):
+def fix_punctuation(text: str) -> str:
+    """
+    Fix punctuation and formatting issues in the text.
+
+    Args:
+        text: The text to be corrected.
+
+    Returns:
+        The corrected text.
+    """
     prompt = "В письме что-то не так с пунктуацией или есть плейсхолдеры. Нужно привести письмо в презентабельный вид, что бы его можно было отправить с откликом."
     return send_for_enhance(text, prompt)
 
 
-def fix_adequacy(text, skills, requirements):
-    prompt = (f"""В письме что-то есть несоответствия с навыками кандидата или требованиями. 
-        Нужно сделать так, что бы письмо не врало по поводу навыков и соответствовало требованиям.
-        Навыки кандидата:
-        {skills}
-        Требования к вакансии:
-        {requirements}
-         """)
+def fix_adequacy(text: str, skills: str, requirements: str | dict) -> str:
+    """
+    Ensure the text accurately represents skills and meets requirements.
+
+    Args:
+        text: The text to be checked.
+        skills: The candidate's actual skills.
+        requirements: The job requirements.
+
+    Returns:
+        The corrected text.
+    """
+    prompt = f"""В письме что-то есть несоответствия с навыками кандидата или требованиями. 
+    Нужно сделать так, что бы письмо не врало по поводу навыков и соответствовало требованиям.
+    Навыки кандидата:
+    {skills}
+    Требования к вакансии:
+    {requirements}"""
     return send_for_enhance(text, prompt)
 
 
-def is_require_punctuation(text):
+def is_require_punctuation(text: str) -> bool:
+    """
+    Check if the text requires punctuation corrections.
+
+    Args:
+        text: The text to be checked.
+
+    Returns:
+        True if punctuation is correct, False otherwise.
+    """
     prompt = f"""
     Ответь на вопрос соответствует ли письмо правильной пунктуации, нет ли лишних символов или плейсхолдеров. Можно ли его прямо сейчас отправить с откликом.
     ОТВЕТ ЛИБО ДА ЛИБО НЕТ
@@ -120,7 +202,18 @@ def is_require_punctuation(text):
     return yes_no_recognizer(response)
 
 
-def is_require_adequacy(text, skills, requirements):
+def is_require_adequacy(text: str, skills: str, requirements: str | dict) -> bool:
+    """
+    Check if the text accurately represents skills and requirements.
+
+    Args:
+        text: The text to be checked.
+        skills: The candidate's actual skills.
+        requirements: The job requirements.
+
+    Returns:
+        True if the text is accurate, False otherwise.
+    """
     prompt = f"""
     Ответь на вопрос соответствует ли письмо навыкам кандидата и требованиям вакансии. Нет ли наглого вранья, что кандидат знает какой-то фреймворк или технологию, которой не указано в навыках.
     Навыки кандидата:
@@ -134,53 +227,96 @@ def is_require_adequacy(text, skills, requirements):
     return yes_no_recognizer(response)
 
 
-def yes_no_recognizer(string: str) -> bool:
-    """Recognizes yes or no in string"""
-    if not isinstance(string, str):
-        raise Exception('Type should be string')
-    if len(string) > 5:
-        raise Exception('Lenght should be <= 5')
-    string = string.lower()
-    if 'да' in string and 'нет' not in string:
+def yes_no_recognizer(text: str) -> bool:
+    """
+    Recognize a yes/no answer in Russian text.
+
+    Args:
+        text: The text to analyze (should contain "да" or "нет").
+
+    Returns:
+        True if "да" is found, False if "нет" is found.
+
+    Raises:
+        ValueError: If the input doesn't contain a clear yes/no answer.
+        Exception: If input is not a string or is too long.
+    """
+    if not isinstance(text, str):
+        raise Exception("Input should be a string")
+    if len(text) > 5:
+        raise Exception("Input length should be <= 5 characters")
+
+    text = text.lower()
+    if "да" in text and "нет" not in text:
         return True
-    elif 'нет' in string and 'да' not in string:
+    elif "нет" in text and "да" not in text:
         return False
     else:
-        raise ValueError('Incorrect Value')
+        raise ValueError("Input does not contain a clear yes/no answer")
 
 
-_old_vacancies_cache = None
+class VacancyCache:
+    """Cache for tracking processed vacancies."""
 
+    def __init__(self):
+        self.cache = set()
+        self.initialize_cache()
 
-def is_new_vacancy(vacancy):
-    global _old_vacancies_cache
+    def initialize_cache(self):
+        """Initialize the cache by scanning existing letter files."""
+        if not os.path.exists("letters/"):
+            os.makedirs("letters/", exist_ok=True)
+            return
 
-    # Инициализация кеша при первом вызове
-    if _old_vacancies_cache is None:
-        _old_vacancies_cache = set()
-        for root, _, files in os.walk('letters/'):
+        for root, _, files in os.walk("letters/"):
             for file_name in files:
                 try:
-                    vacancy_id = file_name.split('-')[0]
-                    _old_vacancies_cache.add(vacancy_id)
+                    vacancy_id = file_name.split("-")[0]
+                    self.cache.add(vacancy_id)
                 except IndexError:
                     continue
 
-    # Извлекаем ID в зависимости от типа входных данных
-    if isinstance(vacancy, (str, int, float)):
-        vacancy_id = str(vacancy)  # на случай, если передали число
-    elif isinstance(vacancy, dict) and 'id' in vacancy:
-        vacancy_id = str(vacancy['id'])
-    else:
-        raise ValueError(
-            f"Unsupported data type for vacancy: {type(vacancy)}. "
-            "Expected string/number (ID) or dictionary with key 'id'"
-        )
+    def is_new_vacancy(self, vacancy) -> bool:
+        """
+        Check if a vacancy is new (not in cache).
 
-    return vacancy_id not in _old_vacancies_cache
+        Args:
+            vacancy: Can be a string/number (ID) or dict with 'id' key.
+
+        Returns:
+            True if the vacancy is new, False if already processed.
+
+        Raises:
+            ValueError: If the input type is not supported.
+        """
+        if isinstance(vacancy, (str, int, float)):
+            vacancy_id = str(vacancy)
+        elif isinstance(vacancy, dict) and "id" in vacancy:
+            vacancy_id = str(vacancy["id"])
+        else:
+            raise ValueError(
+                f"Unsupported data type for vacancy: {type(vacancy)}. "
+                "Expected string/number (ID) or dictionary with key 'id'"
+            )
+
+        return vacancy_id not in self.cache
 
 
-def process(vacancy_hh_id, context: dict):
+# Initialize the vacancy cache
+vacancy_cache = VacancyCache()
+
+
+def process(vacancy_id: str, context: dict) -> None:
+    """
+    Generate and validate a cover letter for a job vacancy.
+
+    Args:
+        vacancy_id: The ID of the vacancy.
+        context: Dictionary containing vacancy details.
+
+    Raises:
+        Exception: If unable to generate a valid letter after multiple attempts.
+    """
     prompt = f"""
     ТВОИ ЖЕСТКИЕ ПРАВИЛА:
     1. Формат: 3 АБЗАЦА (4-6 предложений) + КОНТАКТЫ ОТДЕЛЬНО
@@ -208,41 +344,59 @@ def process(vacancy_hh_id, context: dict):
     Здравствуйте, меня зовут [Имя].
 
     У меня есть опыт работы с [Основной навык 1] и [Основной навык 2], что соответствует ключевым требованиям вакансии. В частности, я работал с [Технология/Инструмент], который активно используется в вашем проекте. Это позволяет мне быстро включиться в рабочий процесс.
-    
+
     В моем предыдущем проекте по [Область применения] я занимался [Конкретная задача]. Этот опыт напрямую соотносится с [Требование из вакансии]. Также участвовал в [Другой релевантный проект], где применял [Соответствующий навык].
-    
+
     Ваша вакансия привлекла меня потому, что [Причина 1] и [Причина 2]. Особенно интересен аспект [Конкретный пункт из описания вакансии], который соответствует моему профессиональному опыту.
-    
+
     Контакты для связи: [Телефон], [Email]
     """
-    requirements = context  # Hope there's enough context.
-    logging.info(f'Writing letter for vacancy ({vacancy_hh_id})')
+
+    logger.info(f"Generating letter for vacancy {vacancy_id}")
     letter = send_request(prompt)
-    logging.info(f'Checking letter for adequacy ({vacancy_hh_id})')
-    try:
-        round = 1
-        while not is_require_adequacy(letter, SKILLS, requirements):
-            if round > 3:
-                save_to_txt(letter, vacancy_hh_id + "-defective")
-                raise Exception("Can't write a letter")
-            logging.info(f'Round {round} ({vacancy_hh_id})')
-            letter = fix_adequacy(letter, SKILLS, requirements)
-            round += 1
-        logging.info(f'Checking letter for punctuation ({vacancy_hh_id})')
-        round = 1
-        while not is_require_punctuation(letter):
-            logging.info(f'Round {round} ({vacancy_hh_id})')
-            letter = fix_punctuation(letter)
-            round += 1
-    except Exception as e:
-        logging.error(f"Can't write a letter ({vacancy_hh_id})")
-        pass
+
+    # Validate and fix adequacy
+    logger.info(f"Validating adequacy for vacancy {vacancy_id}")
+    for round in range(1, 4):
+        if is_require_adequacy(letter, SKILLS, context):
+            break
+        logger.info(f"Adequacy check round {round} for vacancy {vacancy_id}")
+        letter = fix_adequacy(letter, SKILLS, context)
     else:
-        logging.info(f'Letter meets the requirements ({vacancy_hh_id})')
-        save_to_txt(letter, vacancy_hh_id)
+        save_to_txt(letter, f"{vacancy_id}-defective")
+        raise Exception(
+            f"Failed to generate adequate letter for vacancy {vacancy_id} after 3 attempts"
+        )
+
+    # Validate and fix punctuation
+    logger.info(f"Validating punctuation for vacancy {vacancy_id}")
+    for round in range(1, 4):
+        if is_require_punctuation(letter):
+            break
+        logger.info(f"Punctuation check round {round} for vacancy {vacancy_id}")
+        letter = fix_punctuation(letter)
+    else:
+        save_to_txt(letter, f"{vacancy_id}-defective")
+        raise Exception(
+            f"Failed to fix punctuation for vacancy {vacancy_id} after 3 attempts"
+        )
+
+    # Save the successful letter
+    logger.info(f"Letter for vacancy {vacancy_id} meets all requirements")
+    save_to_txt(letter, vacancy_id)
 
 
+def save_to_txt(content: str, filename: str) -> None:
+    """
+    Save content to a text file in the letters directory.
 
-def save_to_txt(letter, vacancy_hh_id):
-    with open(f'letters/{vacancy_hh_id}-{date.today()}.txt', 'w') as f:
-        f.write(letter)
+    Args:
+        content: The text content to save.
+        filename: The base filename (without extension).
+    """
+    os.makedirs("letters/", exist_ok=True)
+    filepath = f"letters/{filename}-{date.today()}.txt"
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+    logger.info(f"Saved letter to {filepath}")
