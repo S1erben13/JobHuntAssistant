@@ -5,18 +5,13 @@ from datetime import date
 import requests
 from dotenv import load_dotenv
 
-# from striprtf.striprtf import rtf_to_text
-
-# Load environment variables
 load_dotenv()
 LLM_MODEL = os.getenv("LLM_MODEL")
 SKILLS = os.getenv("SKILLS")
 PERSONAL_DATA = os.getenv("PERSONAL_DATA")
 
-# API configuration
 OLLAMA_API_URL = "http://ollama:11434/api/generate"
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
@@ -42,19 +37,18 @@ def send_request(prompt: str, conversation_history: list = None) -> str:
     """
     conversation_history = conversation_history or []
 
-    # Format the prompt with conversation history
     messages = conversation_history + [{"role": "user", "content": prompt}]
     formatted_prompt = (
-        "".join(
-            (
-                f"Пользователь: {msg['content']}\n\n"
-                if msg["role"] == "user"
-                else f"Ассистент: {msg['content']}\n\n"
+            "".join(
+                (
+                    f"Пользователь: {msg['content']}\n\n"
+                    if msg["role"] == "user"
+                    else f"Ассистент: {msg['content']}\n\n"
+                )
+                for msg in messages
             )
-            for msg in messages
-        )
-        + "Ассистент:[SEP]"
-    )  # Critical generation marker
+            + "Ассистент:[SEP]"
+    )
 
     payload = {
         "model": LLM_MODEL,
@@ -120,7 +114,6 @@ def clean_response(response: str) -> str:
         .replace("  ", " ")  # Remove double spaces
     )
 
-    # Remove special formatting characters
     for char in ["#", "*", "`"]:
         cleaned = cleaned.replace(char, "")
 
@@ -302,10 +295,6 @@ class VacancyCache:
         return vacancy_id not in self.cache
 
 
-# Initialize the vacancy cache
-vacancy_cache = VacancyCache()
-
-
 def process(vacancy_id: str, context: dict) -> None:
     """
     Generate and validate a cover letter for a job vacancy.
@@ -355,7 +344,6 @@ def process(vacancy_id: str, context: dict) -> None:
     logger.info(f"Generating letter for vacancy {vacancy_id}")
     letter = send_request(prompt)
 
-    # Validate and fix adequacy
     logger.info(f"Validating adequacy for vacancy {vacancy_id}")
     for round in range(1, 4):
         if is_require_adequacy(letter, SKILLS, context):
@@ -368,7 +356,6 @@ def process(vacancy_id: str, context: dict) -> None:
             f"Failed to generate adequate letter for vacancy {vacancy_id} after 3 attempts"
         )
 
-    # Validate and fix punctuation
     logger.info(f"Validating punctuation for vacancy {vacancy_id}")
     for round in range(1, 4):
         if is_require_punctuation(letter):
@@ -381,7 +368,6 @@ def process(vacancy_id: str, context: dict) -> None:
             f"Failed to fix punctuation for vacancy {vacancy_id} after 3 attempts"
         )
 
-    # Save the successful letter
     logger.info(f"Letter for vacancy {vacancy_id} meets all requirements")
     save_to_txt(letter, vacancy_id)
 

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from math import ceil
 from typing import Any, Dict, List
 
 import requests
@@ -9,35 +10,30 @@ from dotenv import load_dotenv
 
 from utils import VacancyCache, process
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Load environment variables
 load_dotenv()
 PROG_LANGUAGE = os.getenv("PROG_LANGUAGE")
 EXPERIENCE = os.getenv("EXPERIENCE")
 SALARY = int(os.getenv("SALARY"))
 HAS_TEST = os.getenv("HAS_TEST")
-VACANCIES_PER_FRAMEWORK = int(os.getenv("VC_PR_FW"))
+PER_PARAMS = int(os.getenv("PER_PARAMS"))
 FRAMEWORKS = os.getenv("FRAMEWORKS").split(",")
 
-# Initialize the cache at module level (right after imports)
 vacancy_cache = VacancyCache()
 
-# API constants
 HH_API_URL = "https://api.hh.ru/vacancies"
+
 DEFAULT_PARAMS = {
     "text": PROG_LANGUAGE,
     "ored_clusters": "true",
-    "experience": EXPERIENCE,
     "work_format": "REMOTE",
     "has_test": HAS_TEST,
     "salary": SALARY,
     "order_by": "publication_time",
-    "per_page": VACANCIES_PER_FRAMEWORK,
 }
 
 
@@ -51,15 +47,21 @@ def fetch_vacancies_for_framework(framework: str) -> List[Dict[str, Any]]:
     Returns:
         List of vacancy dictionaries from the API response.
     """
-    search_query = f"{PROG_LANGUAGE} {framework}"
-    params = DEFAULT_PARAMS.copy()
-    params["text"] = search_query
+    vacancies = []
+    expirience = EXPERIENCE.split(',')
+    for page in range(1, ceil(PER_PARAMS/100)+1):
+        for period in expirience:
+            search_query = f"{PROG_LANGUAGE} {framework}"
+            params = DEFAULT_PARAMS.copy()
+            params["text"] = search_query
+            params["page"] = page
+            params["per_page"] = min(PER_PARAMS, 100)
 
-    logger.info(f"Searching for vacancies: {search_query}")
-    response = requests.get(url=HH_API_URL, params=params)
-    response.raise_for_status()
-
-    return response.json().get("items", [])
+            logger.info(f"Searching for vacancies: {search_query} (page №{page}) (expirience {period})")
+            response = requests.get(url=HH_API_URL, params=params)
+            response.raise_for_status()
+            vacancies += response.json().get("items", [])
+    return vacancies
 
 
 def remove_duplicate_vacancies(vacancies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -124,7 +126,6 @@ def parse_vacancies() -> None:
     Main function to fetch, process, and handle vacancies from HeadHunter API.
     Filters new vacancies, processes them through LLM, and handles errors.
     """
-    # Fetch all vacancies for each framework
     all_vacancies = []
     for framework in FRAMEWORKS:
         try:
@@ -133,15 +134,12 @@ def parse_vacancies() -> None:
             logger.error(f"Failed to fetch vacancies for {framework}: {e}")
             continue
 
-    # Process and filter vacancies
     unique_vacancies = remove_duplicate_vacancies(all_vacancies)
-    # Use the cache instance instead of is_new_vacancy function
     new_vacancies = [v for v in unique_vacancies if vacancy_cache.is_new_vacancy(v)]
     sorted_vacancies = sort_vacancies_by_date(new_vacancies)
 
     logger.info(f"Found {len(sorted_vacancies)} new vacancies to process")
 
-    # Process each vacancy
     for vacancy in sorted_vacancies:
         vacancy_id = vacancy["id"]
         logger.info(f"Processing vacancy: {vacancy_id}")
@@ -149,7 +147,6 @@ def parse_vacancies() -> None:
         try:
             vacancy_details = get_vacancy_details(vacancy)
             process(vacancy_id, vacancy_details)
-            # The cache will automatically track new files created by save_to_txt
         except Exception as e:
             logger.error(f"Error processing vacancy {vacancy_id}: {str(e)}")
             continue
