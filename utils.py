@@ -9,8 +9,8 @@ load_dotenv()
 LLM_MODEL = os.getenv("LLM_MODEL")
 SKILLS = os.getenv("SKILLS")
 PERSONAL_DATA = os.getenv("PERSONAL_DATA")
-ADEQUACY_ROUNDS = int(os.getenv("ADEQUACY_ROUND"))
-PUNCTUATION_ROUNDS = int(os.getenv("PUNCTUATIONS_ROUNDS"))
+ADEQUACY_ROUNDS = int(os.getenv("ADEQUACY_ROUNDS"))
+PUNCTUATION_ROUNDS = int(os.getenv("PUNCTUATION_ROUNDS"))
 
 
 OLLAMA_API_URL = "http://ollama:11434/api/generate"
