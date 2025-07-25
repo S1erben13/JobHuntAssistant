@@ -1,8 +1,11 @@
 import json
 import logging
 import os
+import subprocess
+import sys
 from datetime import datetime
 from math import ceil
+from multiprocessing import Process
 from typing import Any, Dict, List
 
 import requests
@@ -16,19 +19,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-PROG_LANGUAGE = os.getenv("PROG_LANGUAGE")
+MAIN_QUERY = os.getenv("MAIN_QUERY")
+EXCLUDE = os.getenv("EXCLUDE")
 EXPERIENCE = os.getenv("EXPERIENCE")
 SALARY = int(os.getenv("SALARY"))
 HAS_TEST = os.getenv("HAS_TEST")
 PER_PARAMS = int(os.getenv("PER_PARAMS"))
-FRAMEWORKS = os.getenv("FRAMEWORKS").split(",")
+INCLUDE = os.getenv("INCLUDE").split(",")
 
 vacancy_cache = VacancyCache()
 
 HH_API_URL = "https://api.hh.ru/vacancies"
 
 DEFAULT_PARAMS = {
-    "text": PROG_LANGUAGE,
+    "text": MAIN_QUERY,
+    "excluded_text": EXCLUDE,
     "ored_clusters": "true",
     "work_format": "REMOTE",
     "has_test": HAS_TEST,
@@ -48,16 +53,16 @@ def fetch_vacancies_for_framework(framework: str) -> List[Dict[str, Any]]:
         List of vacancy dictionaries from the API response.
     """
     vacancies = []
-    expirience = EXPERIENCE.split(',')
+    experience = EXPERIENCE.split(',')
     for page in range(1, ceil(PER_PARAMS/100)+1):
-        for period in expirience:
-            search_query = f"{PROG_LANGUAGE} {framework}"
+        for period in experience:
+            search_query = f"{MAIN_QUERY} {framework}"
             params = DEFAULT_PARAMS.copy()
             params["text"] = search_query
             params["page"] = page
             params["per_page"] = min(PER_PARAMS, 100)
 
-            logger.info(f"Searching for vacancies: {search_query} (page №{page}) (expirience {period})")
+            logger.info(f"Searching for vacancies: {search_query} (page №{page}) (experience {period})")
             response = requests.get(url=HH_API_URL, params=params)
             response.raise_for_status()
             vacancies += response.json().get("items", [])
@@ -127,11 +132,11 @@ def parse_vacancies() -> None:
     Filters new vacancies, processes them through LLM, and handles errors.
     """
     all_vacancies = []
-    for framework in FRAMEWORKS:
+    for query in INCLUDE:
         try:
-            all_vacancies.extend(fetch_vacancies_for_framework(framework))
+            all_vacancies.extend(fetch_vacancies_for_framework(query))
         except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to fetch vacancies for {framework}: {e}")
+            logger.error(f"Failed to fetch vacancies for {query}: {e}")
             continue
 
     unique_vacancies = remove_duplicate_vacancies(all_vacancies)
@@ -152,6 +157,12 @@ def parse_vacancies() -> None:
             continue
     logger.info("✅ Vacancy processing completed successfully")
 
+def run_send_letters():
+    """Run send_letters.py as separate process"""
+    subprocess.run([sys.executable, "send_letters.py"])
 
 if __name__ == "__main__":
     parse_vacancies()
+
+    # p = Process(target=run_send_letters)
+    # p.start()
