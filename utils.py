@@ -9,6 +9,9 @@ load_dotenv()
 LLM_MODEL = os.getenv("LLM_MODEL")
 SKILLS = os.getenv("SKILLS")
 PERSONAL_DATA = os.getenv("PERSONAL_DATA")
+ADEQUACY_ROUNDS = int(os.getenv("ADEQUACY_ROUND"))
+PUNCTUATION_ROUNDS = int(os.getenv("PUNCTUATIONS_ROUNDS"))
+
 
 OLLAMA_API_URL = "http://ollama:11434/api/generate"
 
@@ -345,7 +348,7 @@ def process(vacancy_id: str, context: dict) -> None:
     letter = send_request(prompt)
 
     logger.info(f"Validating adequacy for vacancy {vacancy_id}")
-    for round in range(1, 4):
+    for round in range(1, ADEQUACY_ROUNDS+1):
         if is_require_adequacy(letter, SKILLS, context):
             break
         logger.info(f"Adequacy check round {round} for vacancy {vacancy_id}")
@@ -357,7 +360,7 @@ def process(vacancy_id: str, context: dict) -> None:
         )
 
     logger.info(f"Validating punctuation for vacancy {vacancy_id}")
-    for round in range(1, 4):
+    for round in range(1, PUNCTUATION_ROUNDS+1):
         if is_require_punctuation(letter):
             break
         logger.info(f"Punctuation check round {round} for vacancy {vacancy_id}")
