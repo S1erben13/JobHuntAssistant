@@ -7,12 +7,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 LLM_MODEL = os.getenv("LLM_MODEL")
-SKILLS = os.getenv("SKILLS")
 PERSONAL_DATA = os.getenv("PERSONAL_DATA")
 ADEQUACY_ROUNDS = int(os.getenv("ADEQUACY_ROUNDS"))
 PUNCTUATION_ROUNDS = int(os.getenv("PUNCTUATION_ROUNDS"))
-
-
+with open('prompts/data/skills.txt', 'r') as f:
+    SKILLS = f.read()
 OLLAMA_API_URL = "http://ollama:11434/api/generate"
 
 logging.basicConfig(
@@ -58,10 +57,10 @@ def send_request(prompt: str, conversation_history: list = None) -> str:
         "prompt": formatted_prompt,
         "stream": False,
         "options": {
-            "num_predict": 350,  # Optimal for 2 paragraphs
-            "temperature": 0.6,  # Creativity/strictness balance
-            "top_p": 0.85,  # Better selectivity
-            "stop": ["\n\n\n", "Добрый день, я", "Уважаемые"],  # Clear boundaries
+            "num_predict": 350,
+            "temperature": 0.5,  # Creativity/strictness balance
+            "top_p": 0.85,
+            "stop": ["\n\n\n", "Добрый день, я", "Уважаемые"],
         },
     }
 
@@ -134,13 +133,13 @@ def send_for_enhance(text: str, edit_wishes: str) -> str:
     Returns:
         The enhanced text.
     """
-    prompt = f"""
-    СОПРОВОДИТЕЛЬНОЕ ПИСЬМО НУЖНО ИЗМЕНИТЬ С УЧЁТОМ ПОЖЕЛАНИЙ.
-    ПОЖЕЛАНИЯ:
-    {edit_wishes}
-    В ТВОЁМ ОТВЕТЕ ДОЛЖНО БЫТЬ ТОЛЬКО ИЗМЕНЕННОЕ ПИСЬМО И НИЧЕГО БОЛЬШЕ
-    ПИСЬМО:
-    {text}"""
+    with open('prompts/change_letter.txt', 'r') as p:
+        template = p.read()
+
+    prompt = template.format(
+        edit_wishes=edit_wishes,
+        text=text
+    )
     return send_request(prompt)
 
 
@@ -154,7 +153,9 @@ def fix_punctuation(text: str) -> str:
     Returns:
         The corrected text.
     """
-    prompt = "В письме что-то не так с пунктуацией или есть плейсхолдеры. Нужно привести письмо в презентабельный вид, что бы его можно было отправить с откликом."
+    with open('prompts/fix_punctuation.txt', 'r') as p:
+        prompt = p.read()
+
     return send_for_enhance(text, prompt)
 
 
@@ -170,12 +171,14 @@ def fix_adequacy(text: str, skills: str, requirements: str | dict) -> str:
     Returns:
         The corrected text.
     """
-    prompt = f"""В письме что-то есть несоответствия с навыками кандидата или требованиями. 
-    Нужно сделать так, что бы письмо не врало по поводу навыков и соответствовало требованиям.
-    Навыки кандидата:
-    {skills}
-    Требования к вакансии:
-    {requirements}"""
+    with open('prompts/fix_adequacy.txt', 'r') as p:
+        template = p.read()
+
+    prompt = template.format(
+        skills=skills,
+        requirements=requirements
+    )
+
     return send_for_enhance(text, prompt)
 
 
@@ -189,11 +192,13 @@ def is_require_punctuation(text: str) -> bool:
     Returns:
         True if punctuation is correct, False otherwise.
     """
-    prompt = f"""
-    Ответь на вопрос соответствует ли письмо правильной пунктуации, нет ли лишних символов или плейсхолдеров. Можно ли его прямо сейчас отправить с откликом.
-    ОТВЕТ ЛИБО ДА ЛИБО НЕТ
-    ПИСЬМО:
-    {text}"""
+    with open('prompts/is_require_punctuation.txt', 'r') as p:
+        template = p.read()
+
+    prompt = template.format(
+        text=text,
+    )
+
     response = send_request(prompt)
     return yes_no_recognizer(response)
 
@@ -210,15 +215,15 @@ def is_require_adequacy(text: str, skills: str, requirements: str | dict) -> boo
     Returns:
         True if the text is accurate, False otherwise.
     """
-    prompt = f"""
-    Ответь на вопрос соответствует ли письмо навыкам кандидата и требованиям вакансии. Нет ли наглого вранья, что кандидат знает какой-то фреймворк или технологию, которой не указано в навыках.
-    Навыки кандидата:
-    {skills}
-    Требования к вакансии:
-    {requirements}
-    Письмо:
-    {text}
-    ОТВЕТ ЛИБО ДА ЛИБО НЕТ:"""
+    with open('prompts/is_require_adequacy.txt', 'r') as p:
+        template = p.read()
+
+    prompt = template.format(
+        skills=skills,
+        text=text,
+        requirements=requirements
+    )
+
     response = send_request(prompt)
     return yes_no_recognizer(response)
 
@@ -309,73 +314,47 @@ def process(vacancy_id: str, context: dict) -> None:
     Raises:
         Exception: If unable to generate a valid letter after multiple attempts.
     """
-    prompt = f"""
-    ТВОИ ЖЕСТКИЕ ПРАВИЛА:
-    1. Формат: 3 АБЗАЦА (4-6 предложений) + КОНТАКТЫ ОТДЕЛЬНО
-    2. ТОЛЬКО КОНКРЕТИКА из данных ниже
-    3. НИКАКИХ шаблонных фраз типа "идеально подхожу"
-    4. Акцент на: ЧТО СДЕЛАЛ → КАКОЙ РЕЗУЛЬТАТ → КАК ЭТО РЕЛЕВАНТНО вакансии
+    with open('prompts/generate_letter.txt', 'r') as p:
+        template = p.read()
 
-    ДАННЫЕ КАНДИДАТА (НЕ ИЗМЕНЯТЬ):
-    {PERSONAL_DATA}
-    {SKILLS}
-
-    ВАКАНСИЯ:
-    {context}
-
-    СГЕНЕРИРУЙ ТОЧНО ПО СТРУКТУРЕ:
-    [Приветствие]
-
-    [1 абзац] Конкретно какие 2-3 навыка из вакансии закрываю + факты
-    [2 абзац] Как именно мой опыт решит ваши задачи (на примере проектов)
-    [3 мини-абзац] Почему вакансия интересна, пару примеров из требований/описания
-
-    [отдельно] Контакты одной строкой
-
-    ПРИМЕР:
-    Здравствуйте, меня зовут [Имя].
-
-    У меня есть опыт работы с [Основной навык 1] и [Основной навык 2], что соответствует ключевым требованиям вакансии. В частности, я работал с [Технология/Инструмент], который активно используется в вашем проекте. Это позволяет мне быстро включиться в рабочий процесс.
-
-    В моем предыдущем проекте по [Область применения] я занимался [Конкретная задача]. Этот опыт напрямую соотносится с [Требование из вакансии]. Также участвовал в [Другой релевантный проект], где применял [Соответствующий навык].
-
-    Ваша вакансия привлекла меня потому, что [Причина 1] и [Причина 2]. Особенно интересен аспект [Конкретный пункт из описания вакансии], который соответствует моему профессиональному опыту.
-
-    Контакты для связи: [Телефон], [Email]
-    """
+    prompt = template.format(
+        PERSONAL_DATA=PERSONAL_DATA,
+        SKILLS=SKILLS,
+        context=context
+    )
 
     logger.info(f"Generating letter for vacancy {vacancy_id}")
     letter = send_request(prompt)
 
     logger.info(f"Validating adequacy for vacancy {vacancy_id}")
-    for round in range(1, ADEQUACY_ROUNDS+1):
+    for round in range(1, ADEQUACY_ROUNDS + 1):
         if is_require_adequacy(letter, SKILLS, context):
             break
         logger.info(f"Adequacy check round {round} for vacancy {vacancy_id}")
         letter = fix_adequacy(letter, SKILLS, context)
     else:
-        save_to_txt(letter, f"{vacancy_id}-defective")
+        save_to_txt(letter, f"{vacancy_id}", defective=True)
         raise Exception(
-            f"Failed to generate adequate letter for vacancy {vacancy_id} after 3 attempts"
+            f"Failed to generate adequate letter for vacancy {vacancy_id} after {ADEQUACY_ROUNDS} attempts"
         )
 
     logger.info(f"Validating punctuation for vacancy {vacancy_id}")
-    for round in range(1, PUNCTUATION_ROUNDS+1):
+    for round in range(1, PUNCTUATION_ROUNDS + 1):
         if is_require_punctuation(letter):
             break
         logger.info(f"Punctuation check round {round} for vacancy {vacancy_id}")
         letter = fix_punctuation(letter)
     else:
-        save_to_txt(letter, f"{vacancy_id}-defective")
+        save_to_txt(letter, f"{vacancy_id}", defective=True)
         raise Exception(
-            f"Failed to fix punctuation for vacancy {vacancy_id} after 3 attempts"
+            f"Failed to fix punctuation for vacancy {vacancy_id} after {PUNCTUATION_ROUNDS} attempts"
         )
 
     logger.info(f"Letter for vacancy {vacancy_id} meets all requirements")
     save_to_txt(letter, vacancy_id)
 
 
-def save_to_txt(content: str, filename: str) -> None:
+def save_to_txt(content: str, filename: str, defective: bool = False) -> None:
     """
     Save content to a text file in the letters directory.
 
@@ -383,9 +362,15 @@ def save_to_txt(content: str, filename: str) -> None:
         content: The text content to save.
         filename: The base filename (without extension).
     """
-    os.makedirs("letters/", exist_ok=True)
-    filepath = f"letters/{filename}-{date.today()}.txt"
-
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(content)
+    name_format = f"{filename}-{date.today()}"
+    os.makedirs("letters/defective/", exist_ok=True)
+    if not defective:
+        filepath = f"letters/{name_format}.txt"
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+    else:
+        filepath = f"letters/defective/{name_format}.txt"
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
     logger.info(f"Saved letter to {filepath}")
+
