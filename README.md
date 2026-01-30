@@ -55,5 +55,5 @@ The project follows a clean separation of concerns:
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/S1erben13/JobHuntAssistant.git](https://github.com/S1erben13/JobHuntAssistant.git)
+   git clone https://github.com/S1erben13/JobHuntAssistant.git
    cd JobHuntAssistant
