@@ -1,113 +1,52 @@
-# JobHuntAssistant 🤖
+# JobHuntAssistant
 
-**Automated Job Search & Cover Letter Generator powered by Local LLM.**
+Собирает подходящие вакансии с hh.ru, ставит каждой балл и выгружает лучшие в папку «Документы» в виде, удобном для нейросети. Письма пишет нейросеть по твоему выбору (Claude, ChatGPT), откликаешься ты сам.
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
-![Ollama](https://img.shields.io/badge/AI-Ollama-orange.svg)
-![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)
-![Status](https://img.shields.io/badge/Status-Active-green.svg)
+## Что получается на выходе
 
-## 📖 Overview
-
-JobHuntAssistant is an intelligent agent designed to automate the routine part of job hunting on HeadHunter (hh.ru). Instead of generic templates, it uses a **Local LLM** (via Ollama) to read vacancy details and generate a hyper-personalized cover letter for each position.
-
-It features a unique **Self-Correction Loop**: the AI generates a draft, then critiques its own work for adequacy and punctuation, refining the result before saving.
-
-### 🧠 Logic Flow
-
-```mermaid
-graph TD
-    Start([Start]) --> Fetch["Fetch Vacancies from HH.ru"]
-    Fetch --> Filter{"Filter & Cache"}
-    Filter -- "Duplicate/Excluded" --> Ignore[Skip]
-    Filter -- "New Vacancy" --> LLM_Gen["Generate Letter via LLM"]
-    
-    LLM_Gen --> Adequacy{"Adequacy Check"}
-    Adequacy -- Failed --> LLM_Fix1["Re-generate (Fix Logic)"]
-    LLM_Fix1 --> Adequacy
-    
-    Adequacy -- Passed --> Punctuation{"Grammar Check"}
-    Punctuation -- Failed --> LLM_Fix2["Re-generate (Fix Syntax)"]
-    LLM_Fix2 --> Punctuation
-    
-    Punctuation -- Passed --> Save["Save to .txt / .rtf"]
-    Save --> Stop([Done])
+```
+~/Documents/JobHunt/
+├── prompt.md              # готовая инструкция для нейросети
+├── tracker.csv            # все выгруженные вакансии и статус отклика
+└── 2026-11-03/
+    ├── vacancies.md       # топ вакансий с полным описанием — кидаешь в нейросеть вместе с резюме
+    └── vacancies.csv      # то же таблицей (открывается в Excel)
 ```
 
-## 🚀 Key Features
+Вакансии из `tracker.csv` повторно не выгружаются. В колонке «статус» отмечай: `новая`, `откликнулся`, `отказ`, `приглашение`, `пропуск`.
 
-* **Smart Filtering:** Filters vacancies by keywords, salary, and experience levels (excluding irrelevant titles via `EXCLUDE` list).
-* **Context-Aware AI:** The LLM reads the *specific* requirements of the vacancy and maps them to your `PERSONAL_DATA` and `SKILLS`.
-* **Quality Assurance (Reflexion):**
-    * **Adequacy Rounds:** The system asks the AI: *"Does this letter actually answer the job requirements?"* If not, it rewrites it.
-    * **Punctuation Rounds:** Final polish for grammar and style.
-* **Export Utility:** Includes a tool to compile all generated letters into a single `.rtf` file for easy review.
-* **Privacy First:** Runs locally using Ollama — your personal data never leaves your machine.
+## Как работает
 
-## 🛠 Tech Stack
+1. По каждому профилю из `profiles.yaml` идут запросы в публичный API hh.ru (удалёнка или офис, опыт, свежесть).
+2. Отсев: стоп-слова в названии, выездная работа, для офиса — только нужные станции метро.
+3. Балл: ключевые слова профиля в названии и описании, зарплата относительно минимума, штраф за разъезды и тестовое, бонус за свежесть.
+4. Для лучших подгружается полное описание, балл пересчитывается, в выгрузку идёт топ-N (офисных — не больше `max_results`).
 
-* **Core:** Python 3.11
-* **AI:** Ollama (Llama 3, Mistral, or YandexGPT via GGUF)
-* **Data:** Requests, JSON, File-based Caching
-* **Infrastructure:** Docker & Docker Compose
+Профили сейчас: `pos` (R-keeper, кассовое ПО), `video` (видеонаблюдение), `helpdesk` (L1/L2), `noc`, `office` (офис рядом с Петроградкой). Запросы, ключевые слова, станции и веса правятся в `profiles.yaml` без кода.
 
-## ⚙️ Installation & Setup
+## Запуск
 
-### 1. Prerequisites
-You need [Ollama](https://ollama.com/) running locally or accessible via network.
-```bash
-ollama pull llama3  # or your preferred model
-```
-
-### 2. Clone & Configure
-```bash
-git clone [https://github.com/S1erben13/JobHuntAssistant.git](https://github.com/S1erben13/JobHuntAssistant.git)
-cd JobHuntAssistant
-cp .env.example .env
-```
-
-### 3. Environment Variables (`.env`)
-Fill in your details to make the letters truly yours:
-
-```ini
-# AI Settings
-LLM_MODEL=llama3
-ADEQUACY_ROUNDS=2       # How many times AI fixes logic
-PUNCTUATION_ROUNDS=1    # How many times AI fixes grammar
-
-# Job Search Filters
-MAIN_QUERY="Python Developer"
-SALARY=80000
-EXPERIENCE=between1And3,noExperience
-EXCLUDE=Senior,Lead,Java,PHP
-
-# Your Profile
-PERSONAL_DATA="Name: Vladimir... Contacts:..."
-```
-*Note: Key skills should be placed in `prompts/data/skills.txt`.*
-
-## 🏃 Usage
-
-### Option A: Docker (Recommended)
-The container handles the environment setup automatically.
-
-```bash
-docker-compose up --build
-```
-
-### Option B: Local Python
 ```bash
 pip install -r requirements.txt
-python run.py
+cp .env.example .env        # впиши свой email в HH_USER_AGENT
+python run.py               # все профили, топ-15
+python run.py --top 20 --profiles pos helpdesk
+python run.py --out D:/JobHunt
 ```
 
-### 🎁 Bonus: Export to Word/RTF
-After processing vacancies, you can merge all generated text files into one document for bulk review:
+Docker:
 
 ```bash
-python generate_rtx.py
+docker compose run --rm jobhunt --top 15
 ```
-*This creates `cover_letters.rtf` and moves processed logs to the archive.*
 
----
-*Created by [Vladimir Popov](https://github.com/S1erben13)*
+## Дальше с нейросетью
+
+Открой `prompt.md`, приложи резюме и `vacancies.md` за сегодня, вставь текст из `prompt.md`. Получишь письмо под каждую вакансию.
+
+## Тесты
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```

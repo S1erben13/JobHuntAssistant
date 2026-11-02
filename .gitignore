@@ -1,11 +1,7 @@
 /.env
 /venv/
+/.venv/
 /.idea/
-/ollama/
-/letters/
-/cover_letters.rtf
-/test.py
-/logs/
-/letter_tools/
-/prompts/data/skills.txt
-
+__pycache__/
+.pytest_cache/
+/output/
