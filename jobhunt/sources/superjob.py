@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -29,8 +30,8 @@ def parse(item: dict[str, Any]) -> Vacancy:
     return Vacancy(
         source="superjob",
         source_id=str(item["id"]),
-        name=item.get("profession", ""),
-        employer=item.get("firm_name", ""),
+        name=html.unescape(item.get("profession", "")),  # в названиях бывает &amp;
+        employer=html.unescape(item.get("firm_name", "")),
         url=item.get("link", ""),
         published_at=datetime.fromtimestamp(published, tz=timezone.utc) if published else None,
         salary_from=item.get("payment_from") or None,

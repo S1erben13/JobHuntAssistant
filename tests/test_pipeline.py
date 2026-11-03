@@ -88,6 +88,7 @@ def test_superjob_parse(cfg, monkeypatch):
     items = json.loads((FIX / "superjob.json").read_text(encoding="utf-8"))["objects"]
     v1, v2 = [superjob.parse(i) for i in items]
     assert v1.remote is True and v1.experience_min_years == 1 and "Trassir" in v1.description
+    assert v1.employer == "ООО Камеры & Ко"
     assert best_profile(v1, cfg) and v1.profile == "video"
     assert v2.field_work is True and not best_profile(v2, cfg)
     monkeypatch.delenv("SUPERJOB_API_KEY", raising=False)

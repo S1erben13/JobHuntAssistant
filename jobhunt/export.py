@@ -109,11 +109,15 @@ def export(vacancies: list[Vacancy], out_dir: Path, tracker: Tracker, day: date)
     day_dir.mkdir(parents=True, exist_ok=True)
     if not vacancies and (day_dir / "vacancies.md").exists():
         return day_dir  # новых нет — сегодняшнюю выгрузку не трогаем
+    # трекер первым: если он открыт в Excel, падаем до дозаписи vacancies.md, иначе следующий запуск задвоит вакансии
+    tracker.add(vacancies, day)
+    try:
+        tracker.save()
+    except PermissionError as e:
+        raise PermissionError(f"Не удалось записать {tracker.path} — закрой его в Excel и запусти снова") from e
     write_markdown(vacancies, day_dir / "vacancies.md", day)
     write_csv(vacancies, day_dir / "vacancies.csv")
     prompt = out_dir / "prompt.md"
     if not prompt.exists():
         prompt.write_text(PROMPT, encoding="utf-8")
-    tracker.add(vacancies, day)
-    tracker.save()
     return day_dir

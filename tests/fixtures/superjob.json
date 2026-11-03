@@ -1,5 +1,5 @@
 {"objects":[
- {"id":111,"profession":"Специалист поддержки систем видеонаблюдения","firm_name":"ООО Камеры","link":"https://www.superjob.ru/vakansii/111.html",
+ {"id":111,"profession":"Специалист поддержки систем видеонаблюдения","firm_name":"ООО Камеры &amp; Ко","link":"https://www.superjob.ru/vakansii/111.html",
   "date_published":1762100000,"payment_from":85000,"payment_to":0,"currency":"rub","place_of_work":{"id":2,"title":"Удалённая работа"},
   "experience":{"id":2,"title":"От 1 года"},"town":{"title":"Россия"},"metro":[],
   "vacancyRichText":"<p>Настройка регистраторов Hikvision и Trassir, удалённая поддержка клиентов</p>"},
