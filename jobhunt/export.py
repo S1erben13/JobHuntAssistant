@@ -6,9 +6,9 @@ import csv
 from datetime import date
 from pathlib import Path
 
-from .vacancy import Vacancy
+from .models import Vacancy
 
-TRACKER_FIELDS = ["id", "дата", "профиль", "балл", "вакансия", "работодатель", "зарплата", "ссылка", "статус", "заметка"]
+TRACKER_FIELDS = ["id", "источник", "дата", "профиль", "балл", "вакансия", "работодатель", "зарплата", "ссылка", "статус", "заметка"]
 STATUS_NEW = "новая"
 
 PROMPT = """# Как пользоваться
@@ -36,10 +36,11 @@ def write_markdown(vacancies: list[Vacancy], path: Path, day: date) -> None:
             f"## {i}. {v.name} — {v.employer}",
             "",
             f"- Ссылка: {v.url}",
+            f"- Источник: {v.source}",
             f"- Профиль: {v.profile}",
             f"- Зарплата: {v.salary_text}",
-            f"- Формат: {', '.join(v.work_formats) or 'не указан'}",
-            f"- Опыт: {v.experience or 'не указан'}",
+            f"- Формат: {v.format_text}",
+            f"- Опыт: {v.experience_text or 'не указан'}",
         ]
         if v.metro or v.address:
             lines.append(f"- Адрес: {v.address or ''} {('(м. ' + ', '.join(v.metro) + ')') if v.metro else ''}".rstrip())
@@ -53,9 +54,9 @@ def write_csv(vacancies: list[Vacancy], path: Path) -> None:
     # utf-8-sig, чтобы Excel на Windows открыл кириллицу без танцев
     with path.open("w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f, delimiter=";")
-        w.writerow(["балл", "профиль", "вакансия", "работодатель", "зарплата", "ссылка", "почему"])
+        w.writerow(["балл", "источник", "профиль", "вакансия", "работодатель", "зарплата", "ссылка", "почему"])
         for v in vacancies:
-            w.writerow([v.score, v.profile, v.name, v.employer, v.salary_text, v.url, "; ".join(v.reasons)])
+            w.writerow([v.score, v.source, v.profile, v.name, v.employer, v.salary_text, v.url, "; ".join(v.reasons)])
 
 
 class Tracker:
@@ -79,7 +80,7 @@ class Tracker:
             if v.id in known:
                 continue
             self.rows.append({
-                "id": v.id, "дата": day.isoformat(), "профиль": v.profile, "балл": str(v.score),
+                "id": v.id, "источник": v.source, "дата": day.isoformat(), "профиль": v.profile, "балл": str(v.score),
                 "вакансия": v.name, "работодатель": v.employer, "зарплата": v.salary_text,
                 "ссылка": v.url, "статус": STATUS_NEW, "заметка": "",
             })

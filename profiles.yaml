@@ -1,13 +1,25 @@
 # Профили поиска. Каждый профиль — отдельная роль со своими запросами и ключевыми словами.
-# Балл вакансии считается в jobhunt/vacancy.py (функция score); веса — в секции scoring.
+# Личную версию сохрани как profiles.local.yaml (она в .gitignore и читается вместо этого файла).
+# Балл вакансии считается в jobhunt/scoring.py; веса — в секции scoring.
 
 defaults:
-  area: 113                 # 113 — вся Россия (для удалёнки), 2 — Санкт-Петербург
-  work_format: [REMOTE]     # REMOTE, ON_SITE, HYBRID (FIELD_WORK всегда отсеивается)
-  experience: [noExperience, between1And3]
-  min_salary: 80000         # ниже — штраф в баллах, вакансия не отбрасывается
+  remote: true              # true — только удалёнка; false — офис/гибрид
+  region: russia            # russia, spb, moscow
+  max_experience_years: 2   # отсеять вакансии, где требуется больше лет опыта
+  min_salary: 80000         # на руки; ниже — штраф в баллах, вакансия не отбрасывается
   period_days: 14           # искать вакансии за последние N дней
-  per_query: 100            # сколько вакансий брать на один запрос (макс. 100 на страницу)
+  per_query: 100            # сколько вакансий брать на один запрос
+
+# Источники. Программа работает с любым одним из них; неготовые пропускаются с пояснением.
+sources:
+  trudvsem:                 # «Работа России», ключ не нужен
+    enabled: true
+  superjob:                 # нужен SUPERJOB_API_KEY в .env
+    enabled: true
+  hh:                       # сохранённые вручную страницы hh.ru (API для соискателей закрыт)
+    enabled: true
+    # inbox: ~/Documents/JobHunt/hh-inbox
+    assume_remote: true     # если на странице не видно формата, считать удалёнкой
 
 # Отсев по названию вакансии (без учёта регистра, подстрока)
 exclude_title:
@@ -78,8 +90,8 @@ profiles:
 
   office:
     title: Офис рядом с Петроградкой
-    area: 2
-    work_format: [ON_SITE, HYBRID]
+    remote: false
+    region: spb
     max_results: 2          # в итоговый список попадёт не больше 2 офисных вакансий
     queries:
       - специалист технической поддержки

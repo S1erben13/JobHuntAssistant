@@ -1,0 +1,13 @@
+{"status":"200","request":{"api":"v1"},"meta":{"total":2,"limit":100},"results":{"vacancies":[
+ {"vacancy":{"id":"aaaa-1","source":"Вакансия работодателя","region":{"region_code":"7800000000000","name":"Город Санкт-Петербург"},
+  "company":{"name":"ООО \"Пример\""},"creation-date":"2026-11-02","date_modify":"2026-11-02T10:00:00+0300",
+  "salary":"от 90000","salary_min":90000,"salary_max":110000,"job-name":"Специалист технической поддержки R-keeper",
+  "vac_url":"https://trudvsem.ru/vacancy/card/1/aaaa-1","schedule":"Полный рабочий день","employment":"Дистанционная (удаленная) работа",
+  "requirements":"Знание ККТ АТОЛ, эквайринг","duty":"Поддержка ресторанов на R-keeper и iiko",
+  "requirement":{"education":"Среднее профессиональное","experience":1},"addresses":{"address":[{"location":"г Санкт-Петербург"}]},
+  "skills":[],"currency":"«руб.»"}},
+ {"vacancy":{"id":"aaaa-2","region":{"name":"Город Москва"},"company":{"name":"АО \"Другой\""},"creation-date":"2026-10-01",
+  "salary_min":100000,"salary_max":100000,"job-name":"Инженер по технической поддержке","vac_url":"https://trudvsem.ru/vacancy/card/2/aaaa-2",
+  "schedule":"Полный рабочий день","requirements":"Стаж не менее 5 лет. Готовность к частым командировкам.","duty":"Поддержка клиентов",
+  "requirement":{"experience":5},"currency":"«руб.»"}}
+]}}

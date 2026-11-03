@@ -1,9 +1,10 @@
-"""JobHuntAssistant: собирает подходящие вакансии с hh.ru и готовит их для нейросети.
+"""JobHuntAssistant: собирает вакансии с нескольких площадок и готовит их для нейросети.
 
-Пример:
-    python run.py                     # все профили, топ-15, в ~/Documents/JobHunt
-    python run.py --top 20 --profiles pos helpdesk
-    python run.py --out D:/JobHunt
+Примеры:
+    python run.py                          # все готовые источники и профили, топ-15
+    python run.py --sources trudvsem       # только один источник
+    python run.py --profiles pos helpdesk --top 20
+    python run.py --check                  # какие источники готовы и почему остальные пропущены
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -18,35 +20,52 @@ from dotenv import load_dotenv
 
 from jobhunt.config import default_output_dir, load_config
 from jobhunt.export import Tracker, export
-from jobhunt.hh_client import HHClient
 from jobhunt.pipeline import collect, select_top
+from jobhunt.sources import REGISTRY, build_sources
 
 
-def main() -> None:
+def main() -> int:
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Поиск вакансий на hh.ru и выгрузка для нейросети")
+    parser = argparse.ArgumentParser(description="Сбор вакансий и выгрузка для нейросети")
     parser.add_argument("--top", type=int, default=int(os.getenv("TOP", 15)), help="сколько вакансий выгрузить")
-    parser.add_argument("--profiles", nargs="*", help="какие профили из profiles.yaml (по умолчанию все)")
-    parser.add_argument("--config", default="profiles.yaml")
+    parser.add_argument("--profiles", nargs="*", help="профили из profiles.yaml (по умолчанию все)")
+    parser.add_argument("--sources", nargs="*", choices=sorted(REGISTRY), help="источники (по умолчанию все готовые)")
+    parser.add_argument("--config", default=None, help="файл профилей (по умолчанию profiles.local.yaml или profiles.yaml)")
     parser.add_argument("--out", type=Path, default=None, help="папка выгрузки")
+    parser.add_argument("--check", action="store_true", help="только показать готовность источников")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if args.out:
+        os.environ["OUTPUT_DIR"] = str(args.out)
     cfg = load_config(args.config, args.profiles)
-    out_dir = (args.out or default_output_dir()).expanduser()
+    out_dir = default_output_dir()
+
+    sources, skipped = build_sources(cfg.sources, args.sources)
+    for name, reason in skipped.items():
+        logging.info("Источник %s пропущен: %s", name, reason)
+    logging.info("Источники в работе: %s", ", ".join(s.name for s in sources) or "нет")
+    if args.check:
+        return 0
+    if not sources:
+        logging.error("Нет ни одного готового источника. См. README, раздел «Источники».")
+        return 1
+
     out_dir.mkdir(parents=True, exist_ok=True)
-
     tracker = Tracker(out_dir / "tracker.csv")
-    client = HHClient(os.getenv("HH_USER_AGENT", ""), os.getenv("HH_APP_TOKEN", ""))
-
-    candidates = collect(client, cfg, skip_ids=tracker.ids)
+    candidates = collect(sources, cfg, skip_ids=tracker.ids)
     logging.info("Новых подходящих вакансий: %d", len(candidates))
-    top = select_top(client, cfg, candidates, args.top)
+    top = select_top(sources, cfg, candidates, args.top)
 
     day_dir = export(top, out_dir, tracker, date.today())
+    for src in sources:
+        finish = getattr(src, "finish", None)
+        if finish:
+            finish()
     logging.info("Готово: %d вакансий в %s", len(top), day_dir)
     logging.info("Трекер откликов: %s", out_dir / "tracker.csv")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

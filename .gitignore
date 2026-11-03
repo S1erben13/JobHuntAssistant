@@ -1,7 +1,12 @@
+# Личное — не коммитить (репозиторий публичный)
 /.env
+/profiles.local.yaml
+/samples/
+/output/
+/logs/
+
 /venv/
 /.venv/
 /.idea/
 __pycache__/
 .pytest_cache/
-/output/
