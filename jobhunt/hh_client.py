@@ -16,12 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 class HHClient:
-    def __init__(self, user_agent: str, delay: float = 0.3, session: requests.Session | None = None):
+    def __init__(self, user_agent: str, token: str = "", delay: float = 0.3, session: requests.Session | None = None):
         if not user_agent:
             raise ValueError("Нужен HH_USER_AGENT в .env, например: JobHuntAssistant/2.0 (you@mail.ru)")
         self.session = session or requests.Session()
         # hh.ru требует осмысленный User-Agent с контактом, иначе отвечает 400/403
         self.session.headers.update({"HH-User-Agent": user_agent, "User-Agent": user_agent})
+        # без токена приложения hh.ru отвечает 403 на /vacancies (справочники работают и так)
+        if token:
+            self.session.headers["Authorization"] = f"Bearer {token}"
         self.delay = delay
 
     def _get(self, url: str, params: Any = None, retries: int = 3) -> dict[str, Any]:

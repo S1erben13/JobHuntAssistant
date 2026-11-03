@@ -37,7 +37,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     tracker = Tracker(out_dir / "tracker.csv")
-    client = HHClient(os.getenv("HH_USER_AGENT", ""))
+    client = HHClient(os.getenv("HH_USER_AGENT", ""), os.getenv("HH_APP_TOKEN", ""))
 
     candidates = collect(client, cfg, skip_ids=tracker.ids)
     logging.info("Новых подходящих вакансий: %d", len(candidates))
