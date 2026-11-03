@@ -58,6 +58,10 @@ def test_filters(cfg):
     assert not passes_filters(vac(6, "Специалист поддержки", remote=None), helpdesk, cfg)
     assert passes_filters(vac(7, "Специалист поддержки", remote=False, metro=["Черная речка"]), office, cfg)
     assert not passes_filters(vac(8, "Специалист поддержки", remote=False, metro=["Девяткино"]), office, cfg)
+    # без метро — по расстоянию от Петроградской
+    assert passes_filters(vac(9, "Специалист поддержки", remote=False, lat=59.9756, lon=30.3045), office, cfg)  # ул. Академика Павлова
+    assert not passes_filters(vac(10, "Специалист поддержки", remote=False, lat=59.8335, lon=30.3497), office, cfg)  # Звёздная
+    assert not passes_filters(vac(11, "Специалист поддержки", remote=False), office, cfg)
 
 
 def test_score_prefers_relevant(cfg):
@@ -187,3 +191,15 @@ def test_http_retries_broken_response(monkeypatch):
     src = base.HttpSource({}, session=Session())
     assert src.get_json("http://x") == {"ok": True}
     assert Session.calls == 2
+
+
+def test_same_day_rerun_appends(cfg, tmp_path):
+    tracker = Tracker(tmp_path / "tracker.csv")
+    d = date(2026, 11, 3)
+    export([vac(1, "Специалист поддержки 1", profile="pos")], tmp_path, tracker, d)
+    export([], tmp_path, tracker, d)
+    export([vac(2, "Специалист поддержки 2", profile="pos")], tmp_path, tracker, d)
+    md = (tmp_path / "2026-11-03" / "vacancies.md").read_text(encoding="utf-8")
+    assert "## 1. Специалист поддержки 1" in md and "## 2. Специалист поддержки 2" in md
+    rows = (tmp_path / "2026-11-03" / "vacancies.csv").read_text(encoding="utf-8-sig").strip().splitlines()
+    assert len(rows) == 3

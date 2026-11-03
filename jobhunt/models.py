@@ -28,6 +28,8 @@ class Vacancy:
     region: str = ""
     metro: list[str] = field(default_factory=list)
     address: str = ""
+    lat: float | None = None
+    lon: float | None = None
     snippet: str = ""
     description: str = ""
     key_skills: list[str] = field(default_factory=list)

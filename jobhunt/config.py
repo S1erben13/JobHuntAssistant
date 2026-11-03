@@ -28,6 +28,8 @@ class Profile:
     period_days: int
     per_query: int
     metro: list[str] = field(default_factory=list)
+    center: tuple[float, float] | None = None
+    max_km: float | None = None
     max_results: int | None = None
 
 
@@ -71,6 +73,8 @@ def load_config(path: str | Path | None = None, only: list[str] | None = None) -
                 period_days=int(m.get("period_days", 14)),
                 per_query=int(m.get("per_query", 100)),
                 metro=list(m.get("metro", [])),
+                center=tuple(m["center"]) if m.get("center") else None,
+                max_km=m.get("max_km"),
                 max_results=m.get("max_results"),
             )
         )

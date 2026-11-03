@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime, timezone
 
@@ -36,11 +37,27 @@ def passes_filters(v: Vacancy, profile: Profile, cfg: Config) -> bool:
     else:
         if v.remote is True:
             return False
-        if profile.metro:
-            allowed = {_norm(m) for m in profile.metro}
-            if not any(_norm(m) in allowed for m in v.metro):
-                return False
+        if not _near(v, profile):
+            return False
     return True
+
+
+def distance_km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    lat1, lon1, lat2, lon2 = map(math.radians, (*a, *b))
+    h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    return 6371 * 2 * math.asin(math.sqrt(h))
+
+
+def _near(v: Vacancy, profile: Profile) -> bool:
+    """Офис рядом: станция метро из списка, а если источник не знает метро — расстояние от center."""
+    if not profile.metro and not profile.center:
+        return True
+    if profile.metro and v.metro:
+        allowed = {_norm(m) for m in profile.metro}
+        return any(_norm(m) in allowed for m in v.metro)
+    if profile.center and profile.max_km and v.lat is not None and v.lon is not None:
+        return distance_km(profile.center, (v.lat, v.lon)) <= profile.max_km
+    return False
 
 
 def _salary_net(v: Vacancy) -> int | None:

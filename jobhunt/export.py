@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import csv
-from datetime import date
+import re
+from datetime import date, datetime
 from pathlib import Path
 
 from .models import Vacancy
@@ -30,8 +31,14 @@ PROMPT = """# Как пользоваться
 
 
 def write_markdown(vacancies: list[Vacancy], path: Path, day: date) -> None:
-    lines = [f"# Вакансии на {day.isoformat()} — {len(vacancies)} шт.", ""]
-    for i, v in enumerate(vacancies, 1):
+    """Повторный запуск в тот же день дописывает новые вакансии в конец, а не затирает файл."""
+    start = 1
+    if path.exists():
+        start = len(re.findall(r"^## \d+\. ", path.read_text(encoding="utf-8"), flags=re.M)) + 1
+        lines = ["", f"# Дополнение {datetime.now():%H:%M} — {len(vacancies)} шт.", ""]
+    else:
+        lines = [f"# Вакансии на {day.isoformat()} — {len(vacancies)} шт.", ""]
+    for i, v in enumerate(vacancies, start):
         lines += [
             f"## {i}. {v.name} — {v.employer}",
             "",
@@ -47,14 +54,17 @@ def write_markdown(vacancies: list[Vacancy], path: Path, day: date) -> None:
         if v.key_skills:
             lines.append(f"- Ключевые навыки: {', '.join(v.key_skills)}")
         lines += [f"- Балл: {v.score} ({'; '.join(v.reasons)})", "", "### Описание", "", v.description or v.snippet, ""]
-    path.write_text("\n".join(lines), encoding="utf-8")
+    with path.open("a", encoding="utf-8") as f:
+        f.write("\n".join(lines))
 
 
 def write_csv(vacancies: list[Vacancy], path: Path) -> None:
     # utf-8-sig, чтобы Excel на Windows открыл кириллицу без танцев
-    with path.open("w", newline="", encoding="utf-8-sig") as f:
+    new_file = not path.exists()
+    with path.open("a", newline="", encoding="utf-8-sig" if new_file else "utf-8") as f:
         w = csv.writer(f, delimiter=";")
-        w.writerow(["балл", "источник", "профиль", "вакансия", "работодатель", "зарплата", "ссылка", "почему"])
+        if new_file:
+            w.writerow(["балл", "источник", "профиль", "вакансия", "работодатель", "зарплата", "ссылка", "почему"])
         for v in vacancies:
             w.writerow([v.score, v.source, v.profile, v.name, v.employer, v.salary_text, v.url, "; ".join(v.reasons)])
 
@@ -97,6 +107,8 @@ class Tracker:
 def export(vacancies: list[Vacancy], out_dir: Path, tracker: Tracker, day: date) -> Path:
     day_dir = out_dir / day.isoformat()
     day_dir.mkdir(parents=True, exist_ok=True)
+    if not vacancies and (day_dir / "vacancies.md").exists():
+        return day_dir  # новых нет — сегодняшнюю выгрузку не трогаем
     write_markdown(vacancies, day_dir / "vacancies.md", day)
     write_csv(vacancies, day_dir / "vacancies.csv")
     prompt = out_dir / "prompt.md"
