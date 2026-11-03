@@ -1,11 +1,12 @@
+# Личное — не коммитить (репозиторий публичный)
 /.env
-/venv/
-/.idea/
-/ollama/
-/letters/
-/cover_letters.rtf
-/test.py
+/profiles.local.yaml
+/samples/
+/output/
 /logs/
-/letter_tools/
-/prompts/data/skills.txt
 
+/venv/
+/.venv/
+/.idea/
+__pycache__/
+.pytest_cache/

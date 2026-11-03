@@ -1,113 +1,114 @@
-# JobHuntAssistant 🤖
+# JobHuntAssistant
 
-**Automated Job Search & Cover Letter Generator powered by Local LLM.**
+Собирает вакансии с нескольких площадок, отсеивает неподходящие, ставит каждой балл и каждый день выгружает лучшие в папку «Документы». Письма пишет Claude Code по твоему резюме (или любая нейросеть по готовому промпту). Откликаешься ты сам.
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
-![Ollama](https://img.shields.io/badge/AI-Ollama-orange.svg)
-![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)
-![Status](https://img.shields.io/badge/Status-Active-green.svg)
+Проект работает даже с одним источником: неготовые площадки пропускаются с пояснением.
 
-## 📖 Overview
+## Источники
 
-JobHuntAssistant is an intelligent agent designed to automate the routine part of job hunting on HeadHunter (hh.ru). Instead of generic templates, it uses a **Local LLM** (via Ollama) to read vacancy details and generate a hyper-personalized cover letter for each position.
+| Источник | Что нужно | Как подключить |
+| --- | --- | --- |
+| `trudvsem` — «Работа России» | ничего | работает сразу, открытый API без ключа |
+| `superjob` — SuperJob | бесплатный ключ приложения | см. ниже, ключ в `.env` как `SUPERJOB_API_KEY` |
+| `hh` — hh.ru | сохранённые страницы | см. ниже, файлы в папку `hh-inbox` |
 
-It features a unique **Self-Correction Loop**: the AI generates a draft, then critiques its own work for adequacy and punctuation, refining the result before saving.
+Проверить, какие источники готовы: `python run.py --check`.
 
-### 🧠 Logic Flow
+### SuperJob: ключ
 
-```mermaid
-graph TD
-    Start([Start]) --> Fetch["Fetch Vacancies from HH.ru"]
-    Fetch --> Filter{"Filter & Cache"}
-    Filter -- "Duplicate/Excluded" --> Ignore[Skip]
-    Filter -- "New Vacancy" --> LLM_Gen["Generate Letter via LLM"]
-    
-    LLM_Gen --> Adequacy{"Adequacy Check"}
-    Adequacy -- Failed --> LLM_Fix1["Re-generate (Fix Logic)"]
-    LLM_Fix1 --> Adequacy
-    
-    Adequacy -- Passed --> Punctuation{"Grammar Check"}
-    Punctuation -- Failed --> LLM_Fix2["Re-generate (Fix Syntax)"]
-    LLM_Fix2 --> Punctuation
-    
-    Punctuation -- Passed --> Save["Save to .txt / .rtf"]
-    Save --> Stop([Done])
+1. Войди на [superjob.ru](https://www.superjob.ru) и открой [api.superjob.ru](https://api.superjob.ru) → «Зарегистрировать приложение».
+2. Название и сайт — любые свои (например, ссылка на этот репозиторий).
+3. Скопируй **Secret key** в `.env`: `SUPERJOB_API_KEY=v3.r.…`. Ключ не публикуй и не коммить.
+
+### hh.ru: только сохранённые страницы
+
+hh.ru **прекратил поддержку API для соискателей 15 декабря 2025**: поиск `api.hh.ru/vacancies` отвечает 403, а регистрировать приложение можно только для работодателей. Поэтому программа не ходит на hh сама и не обходит защиту сайта.
+
+Как использовать hh:
+1. Открой поиск на hh.ru в своём браузере с нужными фильтрами (удобно сохранить его как автопоиск).
+2. Нажми Ctrl+S → «Веб-страница, только HTML» и сохрани в `~/Documents/JobHunt/hh-inbox/`. Можно сохранять и отдельные вакансии — из них берётся полное описание.
+3. Запусти `python run.py`. Разобранные файлы переедут в `hh-inbox/processed/`.
+
+Если на странице не видно формата работы, вакансия считается удалённой (`assume_remote` в `profiles.yaml`), потому что фильтры ты уже выставил в поиске hh.
+
+## Что получается на выходе
+
+```
+~/Documents/JobHunt/
+├── prompt.md              # инструкция для любой нейросети
+├── resume.md              # твоё резюме (кладёшь сам, нужно для писем через Claude)
+├── tracker.csv            # все выгруженные вакансии и статус отклика
+├── hh-inbox/              # сюда сохраняешь страницы hh
+└── 2026-11-03/
+    ├── vacancies.md       # топ вакансий с полным описанием
+    ├── vacancies.csv      # то же таблицей (Excel)
+    └── letters.md         # письма от Claude (если включено)
 ```
 
-## 🚀 Key Features
+Вакансии из `tracker.csv` повторно не выгружаются. В колонке «статус» отмечай: `новая`, `откликнулся`, `отказ`, `приглашение`, `пропуск`. Одна и та же вакансия с разных площадок попадает в выгрузку один раз.
 
-* **Smart Filtering:** Filters vacancies by keywords, salary, and experience levels (excluding irrelevant titles via `EXCLUDE` list).
-* **Context-Aware AI:** The LLM reads the *specific* requirements of the vacancy and maps them to your `PERSONAL_DATA` and `SKILLS`.
-* **Quality Assurance (Reflexion):**
-    * **Adequacy Rounds:** The system asks the AI: *"Does this letter actually answer the job requirements?"* If not, it rewrites it.
-    * **Punctuation Rounds:** Final polish for grammar and style.
-* **Export Utility:** Includes a tool to compile all generated letters into a single `.rtf` file for easy review.
-* **Privacy First:** Runs locally using Ollama — your personal data never leaves your machine.
+## Как отбираются вакансии
 
-## 🛠 Tech Stack
+Профили в `profiles.yaml`: `pos` (R-keeper, кассовое ПО), `video` (видеонаблюдение), `helpdesk` (L1/L2), `noc`, `office` (офис в СПб у выбранных станций метро, не больше 2 в выгрузке). Для каждой вакансии:
 
-* **Core:** Python 3.11
-* **AI:** Ollama (Llama 3, Mistral, or YandexGPT via GGUF)
-* **Data:** Requests, JSON, File-based Caching
-* **Infrastructure:** Docker & Docker Compose
+1. Отсев: стоп-слова в названии, разъездная работа, опыт больше `max_experience_years`, формат (удалёнка/офис), для офиса — станции метро.
+2. Балл: ключевые слова профиля в названии и описании, зарплата относительно `min_salary`, штраф за разъезды и тестовое, бонус за свежесть. Вакансия получает лучший из профилей.
+3. В выгрузку идёт топ-N (`TOP` в `.env` или `--top`).
 
-## ⚙️ Installation & Setup
+Личную настройку храни в `profiles.local.yaml` (скопируй `profiles.yaml`): он в `.gitignore` и читается вместо основного.
 
-### 1. Prerequisites
-You need [Ollama](https://ollama.com/) running locally or accessible via network.
-```bash
-ollama pull llama3  # or your preferred model
-```
+Офисный профиль работает только с источниками, где есть метро (SuperJob и hh); в «Работе России» станций нет.
 
-### 2. Clone & Configure
-```bash
-git clone [https://github.com/S1erben13/JobHuntAssistant.git](https://github.com/S1erben13/JobHuntAssistant.git)
-cd JobHuntAssistant
-cp .env.example .env
-```
-
-### 3. Environment Variables (`.env`)
-Fill in your details to make the letters truly yours:
-
-```ini
-# AI Settings
-LLM_MODEL=llama3
-ADEQUACY_ROUNDS=2       # How many times AI fixes logic
-PUNCTUATION_ROUNDS=1    # How many times AI fixes grammar
-
-# Job Search Filters
-MAIN_QUERY="Python Developer"
-SALARY=80000
-EXPERIENCE=between1And3,noExperience
-EXCLUDE=Senior,Lead,Java,PHP
-
-# Your Profile
-PERSONAL_DATA="Name: Vladimir... Contacts:..."
-```
-*Note: Key skills should be placed in `prompts/data/skills.txt`.*
-
-## 🏃 Usage
-
-### Option A: Docker (Recommended)
-The container handles the environment setup automatically.
+## Установка и запуск
 
 ```bash
-docker-compose up --build
-```
-
-### Option B: Local Python
-```bash
+python -m venv .venv
+.venv\Scripts\activate         # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
-python run.py
+cp .env.example .env            # по желанию: SUPERJOB_API_KEY, OUTPUT_DIR, RESUME_PATH
+
+python run.py --check           # какие источники готовы
+python run.py                   # все готовые источники, топ-15
+python run.py --sources trudvsem --profiles pos helpdesk --top 20
 ```
 
-### 🎁 Bonus: Export to Word/RTF
-After processing vacancies, you can merge all generated text files into one document for bulk review:
+Docker: `docker compose run --rm jobhunt --top 15`.
+
+## Письма через Claude Code
+
+В репозитории есть скилл `.claude/skills/job-letters`. Он собирает вакансии (если сегодня ещё не собраны), читает резюме и пишет `letters.md`: оценку «подходит / частично / не подходит» и письмо под каждую вакансию. Отдельный платный API не нужен — работает в твоём Claude Code.
+
+1. Положи резюме текстом в `~/Documents/JobHunt/resume.md` (или укажи путь в `RESUME_PATH`).
+2. В папке проекта запусти `claude` и напиши «вакансии на сегодня» или `/job-letters`.
+
+Без Claude: открой нейросеть, приложи резюме и `vacancies.md`, вставь текст из `prompt.md`.
+
+## Расписание
+
+Windows (Планировщик заданий), каждый день в 9:00:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\schedule_windows.ps1 -Time 09:00             # только сбор
+powershell -ExecutionPolicy Bypass -File scripts\schedule_windows.ps1 -Time 09:00 -WithLetters # сбор + письма через Claude
+```
+
+Задача запускает `scripts\daily.ps1`, лог — в `logs\`. Удалить: `Unregister-ScheduledTask -TaskName JobHuntAssistant`.
+
+Linux/macOS (cron): `0 9 * * * /path/to/JobHuntAssistant/scripts/daily.sh --with-letters`.
+
+С `-WithLetters` вызывается `claude -p` с доступом только на чтение и запись файлов в папку выгрузки. Claude Code должен быть установлен и авторизован.
+
+## Приватность
+
+Репозиторий публичный. Ключи, резюме, `profiles.local.yaml`, выгрузка и логи хранятся вне git (см. `.gitignore`). Программа ничего не отправляет от твоего имени и не откликается сама.
+
+## Добавить площадку
+
+Создай `jobhunt/sources/<имя>.py` с классом-наследником `Source` (`unavailable_reason`, `fetch`, по желанию `enrich`) и впиши его в `REGISTRY` в `jobhunt/sources/__init__.py`. Фильтры, баллы и выгрузка общие.
+
+## Тесты
 
 ```bash
-python generate_rtx.py
+pip install -r requirements-dev.txt
+pytest
 ```
-*This creates `cover_letters.rtf` and moves processed logs to the archive.*
-
----
-*Created by [Vladimir Popov](https://github.com/S1erben13)*
