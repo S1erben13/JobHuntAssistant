@@ -28,6 +28,7 @@ def parse(raw: dict[str, Any]) -> Vacancy:
     created = v.get("creation-date")
     published = datetime.strptime(created[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc) if created else None
     exp = req.get("experience")
+    coords = next(((a.get("lat"), a.get("lng")) for a in addresses if a.get("lat") and a.get("lng")), (None, None))
     return Vacancy(
         source="trudvsem",
         source_id=str(v.get("id")),
@@ -43,6 +44,8 @@ def parse(raw: dict[str, Any]) -> Vacancy:
         experience_min_years=int(exp) if isinstance(exp, (int, float)) or (isinstance(exp, str) and exp.isdigit()) else None,
         experience_text=f"от {exp} лет" if exp not in (None, "") else "",
         region=(v.get("region") or {}).get("name", ""),
+        lat=float(coords[0]) if coords[0] else None,
+        lon=float(coords[1]) if coords[1] else None,
         address="; ".join(a.get("location", "") for a in addresses if a.get("location")),
         description=strip_html("\n".join(filter(None, [v.get("duty"), v.get("requirements")]))),
         key_skills=[str(x) for x in v.get("skills") or []],

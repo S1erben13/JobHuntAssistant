@@ -58,6 +58,10 @@ def test_filters(cfg):
     assert not passes_filters(vac(6, "Специалист поддержки", remote=None), helpdesk, cfg)
     assert passes_filters(vac(7, "Специалист поддержки", remote=False, metro=["Черная речка"]), office, cfg)
     assert not passes_filters(vac(8, "Специалист поддержки", remote=False, metro=["Девяткино"]), office, cfg)
+    # без метро — по расстоянию от Петроградской
+    assert passes_filters(vac(9, "Специалист поддержки", remote=False, lat=59.9756, lon=30.3045), office, cfg)  # ул. Академика Павлова
+    assert not passes_filters(vac(10, "Специалист поддержки", remote=False, lat=59.8335, lon=30.3497), office, cfg)  # Звёздная
+    assert not passes_filters(vac(11, "Специалист поддержки", remote=False), office, cfg)
 
 
 def test_score_prefers_relevant(cfg):
@@ -84,6 +88,7 @@ def test_superjob_parse(cfg, monkeypatch):
     items = json.loads((FIX / "superjob.json").read_text(encoding="utf-8"))["objects"]
     v1, v2 = [superjob.parse(i) for i in items]
     assert v1.remote is True and v1.experience_min_years == 1 and "Trassir" in v1.description
+    assert v1.employer == "ООО Камеры & Ко"
     assert best_profile(v1, cfg) and v1.profile == "video"
     assert v2.field_work is True and not best_profile(v2, cfg)
     monkeypatch.delenv("SUPERJOB_API_KEY", raising=False)
@@ -161,3 +166,41 @@ def test_office_limit(cfg):
     cfg.profiles = [prof(cfg, "office")]
     src = FakeSource([vac(i, "Специалист технической поддержки", employer=f"ООО {i}", remote=False, metro=["Петроградская"]) for i in range(5)])
     assert len(select_top([src], cfg, collect([src], cfg, set()), 15)) == 2
+
+
+def test_http_retries_broken_response(monkeypatch):
+    import requests
+    from jobhunt.sources import base
+
+    class Resp:
+        status_code = 200
+        def json(self):
+            return {"ok": True}
+        def raise_for_status(self):
+            pass
+
+    class Session:
+        headers = {}
+        calls = 0
+        def get(self, *a, **kw):
+            Session.calls += 1
+            if Session.calls == 1:
+                raise requests.exceptions.ChunkedEncodingError("Response ended prematurely")
+            return Resp()
+
+    monkeypatch.setattr(base.time, "sleep", lambda s: None)
+    src = base.HttpSource({}, session=Session())
+    assert src.get_json("http://x") == {"ok": True}
+    assert Session.calls == 2
+
+
+def test_same_day_rerun_appends(cfg, tmp_path):
+    tracker = Tracker(tmp_path / "tracker.csv")
+    d = date(2026, 11, 3)
+    export([vac(1, "Специалист поддержки 1", profile="pos")], tmp_path, tracker, d)
+    export([], tmp_path, tracker, d)
+    export([vac(2, "Специалист поддержки 2", profile="pos")], tmp_path, tracker, d)
+    md = (tmp_path / "2026-11-03" / "vacancies.md").read_text(encoding="utf-8")
+    assert "## 1. Специалист поддержки 1" in md and "## 2. Специалист поддержки 2" in md
+    rows = (tmp_path / "2026-11-03" / "vacancies.csv").read_text(encoding="utf-8-sig").strip().splitlines()
+    assert len(rows) == 3
