@@ -110,3 +110,16 @@ def test_office_limit(cfg):
     client = FakeClient([item(i, "Специалист технической поддержки", formats=("ON_SITE",), metro=["Петроградская"]) for i in range(5)])
     top = select_top(client, cfg, collect(client, cfg, set()), 15)
     assert len(top) == 2
+
+
+def test_keyword_word_start():
+    from jobhunt.vacancy import has_keyword
+    assert has_keyword("настройка сети", "сет")
+    assert not has_keyword("встреча посетителей", "сет")
+    assert has_keyword("pos-терминалы", "pos")
+    assert not has_keyword("open position", "pos")
+    assert has_keyword("знание 1с", "1с")
+
+
+def test_cashier_excluded(cfg):
+    assert not passes_filters(from_api(item(1, "Кассир-бариста")), prof(cfg, "pos"), cfg)

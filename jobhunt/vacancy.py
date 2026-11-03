@@ -53,6 +53,14 @@ class Vacancy:
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
+_WORD = r"[0-9a-zа-яё]"
+
+
+def has_keyword(text: str, keyword: str) -> bool:
+    """Ключевое слово должно начинаться с начала слова: «сет» найдётся в «сеть», но не в «посетитель».
+    Латинские слова ищутся целиком, чтобы «pos» не находился в «position»."""
+    tail = rf"(?!{_WORD})" if keyword.isascii() else ""
+    return re.search(rf"(?<!{_WORD}){re.escape(keyword)}{tail}", text) is not None
 
 
 def strip_html(raw: str | None) -> str:
@@ -128,13 +136,13 @@ def score(v: Vacancy, profile: Profile, cfg: Config, now: datetime | None = None
     total, reasons = 0, []
 
     name = v.name.lower()
-    title_hits = [k for k in profile.keywords if k in name]
+    title_hits = [k for k in profile.keywords if has_keyword(name, k)]
     if title_hits:
         total += w.get("title_keyword", 3) * len(title_hits)
         reasons.append("в названии: " + ", ".join(title_hits))
 
     text = v.text
-    text_hits = [k for k in profile.keywords if k in text and k not in title_hits]
+    text_hits = [k for k in profile.keywords if k not in title_hits and has_keyword(text, k)]
     if text_hits:
         total += min(w.get("text_keyword", 1) * len(text_hits), w.get("text_keyword_cap", 8))
         reasons.append("в описании: " + ", ".join(text_hits))
