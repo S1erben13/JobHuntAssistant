@@ -161,3 +161,29 @@ def test_office_limit(cfg):
     cfg.profiles = [prof(cfg, "office")]
     src = FakeSource([vac(i, "Специалист технической поддержки", employer=f"ООО {i}", remote=False, metro=["Петроградская"]) for i in range(5)])
     assert len(select_top([src], cfg, collect([src], cfg, set()), 15)) == 2
+
+
+def test_http_retries_broken_response(monkeypatch):
+    import requests
+    from jobhunt.sources import base
+
+    class Resp:
+        status_code = 200
+        def json(self):
+            return {"ok": True}
+        def raise_for_status(self):
+            pass
+
+    class Session:
+        headers = {}
+        calls = 0
+        def get(self, *a, **kw):
+            Session.calls += 1
+            if Session.calls == 1:
+                raise requests.exceptions.ChunkedEncodingError("Response ended prematurely")
+            return Resp()
+
+    monkeypatch.setattr(base.time, "sleep", lambda s: None)
+    src = base.HttpSource({}, session=Session())
+    assert src.get_json("http://x") == {"ok": True}
+    assert Session.calls == 2
